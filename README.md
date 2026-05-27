@@ -217,9 +217,9 @@ imgsz = 640
 
 ![Архитектура YOLOv8n](docs/images/model_architecture.png)
 
-![Метрики первичного обучения](docs/images/training_metrics.png)
+![Метрики первичного обучения](docs/images/training_metrics.jpg)
 
-![Метрики дообучения](docs/images/finetune_training_metrics.png)
+![Метрики дообучения](docs/images/finetune_training_metrics.jpg)
 
 ![Сравнение метрик](docs/images/metrics_comparison.png)
 

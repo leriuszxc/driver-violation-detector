@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система мониторинга нарушений</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --accent-red: #ff0000;
+            --accent-cyan: #00ffff;
+            --overlay-bg: rgba(18, 18, 18, 0.95);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 15px 20px;
+            height: 70px;
+            position: relative;
+            z-index: 100;
+        }
+
+        .datetime-container {
+            text-align: center;
+            flex-grow: 1;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            font-size: 24px;
+            align-items: center;
+        }
+
+        .icon-btn {
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .icon-btn:hover {
+            opacity: 0.7;
+        }
+
+        #back-btn {
+            display: none;
+            margin-right: auto;
+            transform: scaleX(-1);
+        }
+
+        /* Views */
+        .view-container {
+            flex-grow: 1;
+            position: relative;
+            display: none;
+            padding: 10px;
+            height: calc(100vh - 70px);
+        }
+
+        .view-container.active {
+            display: flex;
+        }
+
+        /* Main Page (Grid) */
+        #main-page {
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            align-content: center;
+        }
+
+        /* Video Stream Placeholders */
+        .video-stream {
+            background-color: #2c2c2c;
+            position: relative;
+            cursor: pointer;
+            border-radius: 4px;
+            overflow: hidden;
+            background-image: linear-gradient(45deg, #1a1a1a 25%, #2c2c2c 25%, #2c2c2c 50%, #1a1a1a 50%, #1a1a1a 75%, #2c2c2c 75%, #2c2c2c 100%);
+            background-size: 20px 20px;
+        }
+
+        .video-frame {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .grid-item {
+            width: 45%;
+            height: 40%;
+            max-height: 300px;
+        }
+
+        .grid-item:nth-child(3) {
+            width: 45%;
+        }
+
+        .single-item {
+            width: 100%;
+            height: 100%;
+            cursor: default;
+        }
+
+        /* Stream Overlays */
+        .stream-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .rec-icon {
+            color: var(--accent-red);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .camera-name {
+            color: #fff;
+            margin-left: 6px;
+            letter-spacing: 0;
+        }
+        
+        .rec-circle {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-red);
+            border-radius: 50%;
+        }
+
+        .warning-icon {
+            color: red;
+            background: white;
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+
+        .warning-icon.active {
+            display: flex;
+        }
+
+        .fps-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 10;
+        }
+
+        .boxes-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 6;
+        }
+
+        .bbox {
+            position: absolute;
+            border: 2px solid;
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+        }
+        .bbox.red { border-color: var(--accent-red); }
+        .bbox.cyan { border-color: var(--accent-cyan); }
+
+        .bbox-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            padding: 2px 5px;
+            color: #fff;
+            font-size: 11px;
+            line-height: 1.2;
+            font-weight: 600;
+            opacity: 0.72;
+            background: rgba(0, 0, 0, 0.34);
+        }
+
+        .side-overlay {
+            position: absolute;
+            top: 0;
+            right: -410px;
+            width: 360px;
+            height: 100vh;
+            background-color: var(--overlay-bg);
+            border-left: 1px solid #333;
+            padding: 70px 20px 20px 20px;
+            transition: right 0.3s ease-in-out;
+            z-index: 50;
+        }
+
+        .side-overlay.active {
+            right: 0;
+        }
+
+        .overlay-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .settings-group {
+            margin-bottom: 25px;
+        }
+
+        .settings-label {
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .setting-row {
+            margin-bottom: 14px;
+        }
+
+        .range-row {
+            display: grid;
+            grid-template-columns: 1fr 44px;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .range-row input {
+            width: 100%;
+        }
+
+        .slider-value {
+            text-align: right;
+            font-size: 13px;
+            color: #ddd;
+            font-weight: 700;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+
+        .danger-btn,
+        .delete-btn {
+            border: 1px solid rgba(255, 0, 0, 0.45);
+            background: rgba(255, 0, 0, 0.14);
+            color: #fff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .danger-btn {
+            padding: 7px 10px;
+            font-size: 13px;
+        }
+
+        .delete-btn {
+            flex: 0 0 auto;
+            width: 26px;
+            height: 26px;
+            line-height: 22px;
+            font-size: 18px;
+        }
+
+        .empty-log {
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+
+        #violation-log-content {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .violation-date {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 15px 0 10px 0;
+            text-align: center;
+        }
+
+        .violation-item {
+            padding: 8px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .violation-item:hover {
+            background-color: #2c2c2c;
+        }
+
+        #violation-reason {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none;
+            z-index: 10;
+        }
+
+        #violation-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="controls" style="width: 50px;">
+            <div id="back-btn" class="icon-btn" onclick="navigateBack()">&#10149;</div>
+        </div>
+        
+        <div class="datetime-container">
+            DATE: <span id="current-date">--.--.----</span><br>
+            <span id="current-time">--:--:--</span>
+        </div>
+
+        <div class="controls">
+            <div class="icon-btn" onclick="toggleOverlay('settings')">&#9881;</div>
+            <div class="icon-btn" onclick="toggleOverlay('details')">&#9776;</div>
+        </div>
+    </header>
+
+    <div id="main-page" class="view-container active">
+        <div class="video-stream grid-item" onclick="openSingleStream('cam0')">
+            <img id="video-frame-cam0" src="" class="video-frame" alt="Camera 1" />
+            <div class="stream-info">
+                <span class="rec-icon"><div class="rec-circle"></div> REC</span>
+                <span class="camera-name">CAM 1</span>
+                <span class="warning-icon" id="warn-cam0">!</span>
+            </div>
+            <div class="fps-info">FPS: <span id="fps-cam0">60</span></div>
+            <div class="boxes-container" id="boxes-cam0"></div> 
+        </div>
+
+        <div class="video-stream grid-item" onclick="openSingleStream('cam1')">
+            <img id="video-frame-cam1" src="" class="video-frame" alt="Camera 2" />
+            <div class="stream-info">
+                <span class="rec-icon"><div class="rec-circle"></div> REC</span>
+                <span class="camera-name">CAM 2</span>
+                <span class="warning-icon" id="warn-cam1">!</span>
+            </div>
+            <div class="fps-info">FPS: <span id="fps-cam1">60</span></div>
+            <div class="boxes-container" id="boxes-cam1"></div>
+        </div>
+
+        <div class="video-stream grid-item" onclick="openSingleStream('cam2')">
+            <img id="video-frame-cam2" src="" class="video-frame" alt="Camera 3" />
+            <div class="stream-info">
+                <span class="rec-icon"><div class="rec-circle"></div> REC</span>
+                <span class="camera-name">CAM 3</span>
+                <span class="warning-icon" id="warn-cam2">!</span>
+            </div>
+            <div class="fps-info">FPS: <span id="fps-cam2">60</span></div>
+            <div class="boxes-container" id="boxes-cam2"></div>
+        </div>
+    </div>
+
+    <div id="single-stream-page" class="view-container">
+        <div class="video-stream single-item">
+            <img id="video-frame-single" src="" class="video-frame" alt="Camera view" />
+            <div class="stream-info">
+                <span class="rec-icon"><div class="rec-circle"></div> REC</span>
+                <span class="camera-name" id="camera-name-single">CAM</span>
+                <span class="warning-icon" id="warn-single">!</span>
+            </div>
+            <div class="fps-info">FPS: 60</div>
+            <div class="boxes-container" id="boxes-single"></div>
+        </div>
+    </div>
+
+    <div id="violation-view-page" class="view-container">
+        <div class="video-stream single-item">
+            <img id="violation-image" src="" alt="Violation snapshot" />
+            <div class="stream-info">
+                <span class="rec-icon"><div class="rec-circle"></div> REC</span>
+            </div>
+            <div class="boxes-container" id="boxes-violation-view"></div>
+            <div id="violation-reason"></div>
+        </div>
+    </div>
+
+    <div id="overlay-settings" class="side-overlay">
+        <div class="overlay-title">Настройки</div>
+        
+        <div class="settings-group">
+            <span class="settings-label">Нарушения:</span>
+            <label class="checkbox-row"><input type="checkbox" checked> Не пристёгнут ремень</label>
+            <label class="checkbox-row"><input type="checkbox" checked> Разговор по телефону</label>
+            <label class="checkbox-row"><input type="checkbox" checked> Отвлечён от дороги</label>
+        </div>
+
+        <div class="settings-group">
+            <span class="settings-label">Чувствительность нарушений:</span>
+            <div style="text-align: center; font-weight: bold; margin-bottom: 5px;">100%</div>
+            <input type="range" min="0" max="100" value="100" style="width: 100%;">
+        </div>
+
+        <div class="settings-group">
+            <span class="settings-label">Чувствительность по классам:</span>
+            <div id="class-sensitivity-settings"></div>
+        </div>
+    </div>
+
+    <div id="overlay-details" class="side-overlay">
+        <div class="overlay-title">Детали нарушений</div>
+        <div class="log-header">
+            <button class="danger-btn" onclick="clearViolationLog()">Удалить все</button>
+        </div>
+
+        <div id="violation-log-content">
+            <div class="empty-log" id="empty-log-msg">Нет зафиксированных нарушений</div>
+        </div>
+    </div>
+
+    <script>
+        // --- БАЗОВАЯ ЛОГИКА ИНТЕРФЕЙСА ---
+        const views = {
+            main: document.getElementById('main-page'),
+            single: document.getElementById('single-stream-page'),
+            violation: document.getElementById('violation-view-page')
+        };
+        const overlays = {
+            settings: document.getElementById('overlay-settings'),
+            details: document.getElementById('overlay-details')
+        };
+        const backBtn = document.getElementById('back-btn');
+        let currentActiveStream = null;
+        const cameraState = {};
+        let lastBackendUpdateAt = null;
+        let violationHistory = [];
+        const classLabels = {
+            'Open Eye': 'Open Eye',
+            'Closed Eye': 'Closed Eye',
+            'Phone': 'Phone',
+            'Seatbelt': 'Seatbelt'
+        };
+        const violationKeys = ['seatbelt', 'phone', 'drowsiness'];
+
+        function updateClock() {
+            const now = new Date();
+            const dateStr = [String(now.getDate()).padStart(2, '0'), String(now.getMonth() + 1).padStart(2, '0'), now.getFullYear()].join('.');
+            const timeStr = [String(now.getHours()).padStart(2, '0'), String(now.getMinutes()).padStart(2, '0'), String(now.getSeconds()).padStart(2, '0')].join(':');
+            document.getElementById('current-date').textContent = dateStr;
+            document.getElementById('current-time').textContent = timeStr;
+            return { dateStr, timeStr };
+        }
+        setInterval(updateClock, 1000);
+
+        function switchView(viewName) {
+            for (let key in views) views[key].classList.remove('active');
+            views[viewName].classList.add('active');
+            backBtn.style.display = viewName === 'main' ? 'none' : 'block';
+            closeAllOverlays();
+        }
+
+        function getCameraLabel(camId) {
+            const index = Number(String(camId).replace('cam', ''));
+            return Number.isFinite(index) ? `CAM ${index + 1}` : String(camId).toUpperCase();
+        }
+
+        function openSingleStream(camId) {
+            currentActiveStream = camId;
+            const singleName = document.getElementById('camera-name-single');
+            if (singleName) {
+                singleName.textContent = getCameraLabel(camId);
+            }
+            switchView('single');
+            if (cameraState[camId]) {
+                updateCameraFrame(camId, cameraState[camId]);
+            }
+        }
+
+        function navigateBack() {
+            switchView('main');
+            document.getElementById('violation-reason').style.display = 'none';
+            document.getElementById('violation-image').style.display = 'none';
+            currentActiveStream = null;
+        }
+
+        function toggleOverlay(overlayName) {
+            const target = overlays[overlayName];
+            const isActive = target.classList.contains('active');
+            closeAllOverlays();
+            if (!isActive) target.classList.add('active');
+        }
+
+        function closeAllOverlays() {
+            for (let key in overlays) overlays[key].classList.remove('active');
+        }
+
+        function openViolationView(reason, date, time) {
+            const reasonEl = document.getElementById('violation-reason');
+            reasonEl.textContent = `Причина: ${reason} (${date} ${time})`;
+            reasonEl.style.display = 'block';
+            switchView('violation');
+        }
+
+        async function showViolationRecord(record) {
+            const reasonEl = document.getElementById('violation-reason');
+            const imageEl = document.getElementById('violation-image');
+            const cameraLabel = getCameraLabel(`cam${record.camera_id}`);
+
+            reasonEl.textContent = `${cameraLabel}: ${record.event} (${record.datetime || ''})`;
+            reasonEl.style.display = 'block';
+            imageEl.style.display = 'none';
+            imageEl.removeAttribute('src');
+            switchView('violation');
+
+            try {
+                const snapshot = await window.pywebview.api.get_violation_snapshot(record.id);
+                if (snapshot && snapshot.ok && snapshot.frame) {
+                    imageEl.src = `data:image/jpeg;base64,${snapshot.frame}`;
+                    imageEl.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Snapshot load error:', error);
+            }
+        }
+
+        function getRenderedBoxStyle(det, imgElement, container, cameraData) {
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            const frameSize = cameraData && cameraData.frame_size ? cameraData.frame_size : {};
+            const imageWidth = imgElement.naturalWidth || Number(imgElement.dataset.frameWidth) || Number(frameSize.width);
+            const imageHeight = imgElement.naturalHeight || Number(imgElement.dataset.frameHeight) || Number(frameSize.height);
+
+            if (!containerWidth || !containerHeight || !imageWidth || !imageHeight) {
+                return {
+                    left: `${det.x}%`,
+                    top: `${det.y}%`,
+                    width: `${det.w}%`,
+                    height: `${det.h}%`
+                };
+            }
+
+            const objectFit = window.getComputedStyle(imgElement).objectFit;
+            const scale = objectFit === 'cover'
+                ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
+                : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
+            const renderedWidth = imageWidth * scale;
+            const renderedHeight = imageHeight * scale;
+            const offsetX = (containerWidth - renderedWidth) / 2;
+            const offsetY = (containerHeight - renderedHeight) / 2;
+
+            return {
+                left: `${offsetX + (det.x / 100) * renderedWidth}px`,
+                top: `${offsetY + (det.y / 100) * renderedHeight}px`,
+                width: `${(det.w / 100) * renderedWidth}px`,
+                height: `${(det.h / 100) * renderedHeight}px`
+            };
+        }
+
+        function renderDetections(container, imgElement, warningIcon, detections, cameraData) {
+            const hasDetections = Array.isArray(detections) && detections.length > 0;
+            
+            if (!container || !warningIcon || !imgElement) return;
+
+            container.innerHTML = '';
+
+            if (hasDetections) {
+                warningIcon.classList.add('active');
+                
+                detections.forEach(det => {
+                    const box = document.createElement('div');
+                    box.className = `bbox ${det.color}`;
+                    const conf = typeof det.conf === 'number' ? det.conf.toFixed(2) : det.conf || '';
+                    const labelText = `${det.label || ''} ${conf}`.trim();
+                    const boxStyle = getRenderedBoxStyle(det, imgElement, container, cameraData);
+
+                    box.title = labelText;
+                    box.style.left = boxStyle.left;
+                    box.style.top = boxStyle.top;
+                    box.style.width = boxStyle.width;
+                    box.style.height = boxStyle.height;
+
+                    if (labelText) {
+                        const label = document.createElement('span');
+                        label.className = 'bbox-label';
+                        label.textContent = labelText;
+                        box.appendChild(label);
+                    }
+
+                    container.appendChild(box);
+                });
+            } else {
+                warningIcon.classList.remove('active');
+            }
+        }
+
+        function updateDetections(camId, detections, cameraData = {}) {
+            const container = document.getElementById(`boxes-${camId}`);
+            const warningIcon = document.getElementById(`warn-${camId}`);
+            const imgElement = document.getElementById(`video-frame-${camId}`);
+
+            renderDetections(container, imgElement, warningIcon, detections, cameraData);
+
+            if (currentActiveStream === camId && views['single'].classList.contains('active')) {
+                const singleContainer = document.getElementById('boxes-single');
+                const singleWarn = document.getElementById('warn-single');
+                const singleImg = document.getElementById('video-frame-single');
+                renderDetections(singleContainer, singleImg, singleWarn, detections, cameraData);
+            }
+        }
+
+        function renderViolationLog(records) {
+            violationHistory = Array.isArray(records) ? records : [];
+            const logContent = document.getElementById('violation-log-content');
+            logContent.innerHTML = '';
+
+            if (violationHistory.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'empty-log';
+                empty.id = 'empty-log-msg';
+                empty.textContent = 'Нет зафиксированных нарушений';
+                logContent.appendChild(empty);
+                return;
+            }
+
+            violationHistory.forEach(record => {
+                const item = document.createElement('div');
+                item.className = 'violation-item';
+
+                const title = document.createElement('span');
+                title.textContent = `${record.datetime || ''} | ${getCameraLabel(`cam${record.camera_id}`)}: ${record.event}`;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.type = 'button';
+                deleteBtn.textContent = '×';
+                deleteBtn.title = 'Удалить запись';
+                deleteBtn.onclick = async event => {
+                    event.stopPropagation();
+                    await deleteViolationRecord(record.id);
+                };
+
+                item.appendChild(title);
+                item.appendChild(deleteBtn);
+                item.onclick = () => showViolationRecord(record);
+                logContent.appendChild(item);
+            });
+        }
+
+        async function loadViolationHistory() {
+            try {
+                const records = await window.pywebview.api.get_violation_history();
+                renderViolationLog(records);
+            } catch (error) {
+                console.error('Violation history load error:', error);
+            }
+        }
+
+        async function deleteViolationRecord(recordId) {
+            try {
+                const result = await window.pywebview.api.delete_violation(recordId);
+                renderViolationLog(result && result.events ? result.events : []);
+            } catch (error) {
+                console.error('Violation delete error:', error);
+            }
+        }
+
+        async function clearViolationLog() {
+            try {
+                const result = await window.pywebview.api.clear_violations();
+                renderViolationLog(result && result.events ? result.events : []);
+                document.getElementById('violation-reason').style.display = 'none';
+                document.getElementById('violation-image').style.display = 'none';
+            } catch (error) {
+                console.error('Violation clear error:', error);
+            }
+        }
+
+        function addViolationToLog(type) {
+            const logContent = document.getElementById('violation-log-content');
+            const emptyMsg = document.getElementById('empty-log-msg');
+            const { dateStr, timeStr } = updateClock();
+
+            if (emptyMsg) emptyMsg.style.display = 'none';
+
+            const item = document.createElement('div');
+            item.className = 'violation-item';
+            item.innerHTML = `<span>${timeStr} |</span><span>${type}</span>`;
+            
+            item.onclick = () => openViolationView(type, dateStr, timeStr);
+
+            logContent.prepend(item);
+        }
+
+        // --- КОД ДЛЯ PYWEBVIEW ---
+        function bindViolationCheckboxes(settings) {
+            const checkboxes = document.querySelectorAll('#overlay-settings .checkbox-row input[type="checkbox"]');
+            checkboxes.forEach((checkbox, index) => {
+                if (!checkbox.dataset.violation) {
+                    checkbox.dataset.violation = violationKeys[index] || '';
+                }
+
+                const key = checkbox.dataset.violation;
+                if (!key) return;
+
+                checkbox.checked = Boolean(settings.enabled_violations && settings.enabled_violations[key]);
+                checkbox.onchange = async () => {
+                    try {
+                        await window.pywebview.api.update_violation_enabled(key, checkbox.checked);
+                    } catch (error) {
+                        console.error('Violation setting update error:', error);
+                    }
+                };
+            });
+        }
+
+        function hideLegacySensitivitySlider() {
+            const legacySlider = document.querySelector('#overlay-settings input[type="range"]:not([data-class-name])');
+            const legacyGroup = legacySlider ? legacySlider.closest('.settings-group') : null;
+            if (legacyGroup) {
+                legacyGroup.style.display = 'none';
+            }
+        }
+
+        function renderClassSensitivitySettings(settings) {
+            const container = document.getElementById('class-sensitivity-settings');
+            container.innerHTML = '';
+
+            Object.entries(settings.class_sensitivity || {}).forEach(([className, value]) => {
+                const row = document.createElement('div');
+                row.className = 'setting-row';
+
+                const label = document.createElement('div');
+                label.textContent = classLabels[className] || className;
+
+                const rangeRow = document.createElement('div');
+                rangeRow.className = 'range-row';
+
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.min = '1';
+                input.max = '100';
+                input.value = value;
+                input.dataset.className = className;
+
+                const valueEl = document.createElement('div');
+                valueEl.className = 'slider-value';
+                valueEl.textContent = `${value}%`;
+
+                input.oninput = () => {
+                    valueEl.textContent = `${input.value}%`;
+                };
+                input.onchange = async () => {
+                    try {
+                        await window.pywebview.api.update_class_sensitivity(className, Number(input.value));
+                    } catch (error) {
+                        console.error('Class sensitivity update error:', error);
+                    }
+                };
+
+                rangeRow.appendChild(input);
+                rangeRow.appendChild(valueEl);
+                row.appendChild(label);
+                row.appendChild(rangeRow);
+                container.appendChild(row);
+            });
+        }
+
+        async function loadSettings() {
+            try {
+                const settings = await window.pywebview.api.get_settings();
+                hideLegacySensitivitySlider();
+                bindViolationCheckboxes(settings || {});
+                renderClassSensitivitySettings(settings || { class_sensitivity: {} });
+            } catch (error) {
+                console.error('Settings load error:', error);
+            }
+        }
+
+        const renderedEventIds = new Set();
+
+        window.addEventListener('pywebviewready', async function() {
+            console.log("pywebview готов. Получаем кадры из Python.");
+            await loadSettings();
+            await loadViolationHistory();
+            setInterval(fetchDataFromPython, 50);
+        });
+
+        function setFrameImage(imgElement, cameraData) {
+            if (!imgElement || !cameraData || !cameraData.frame) return;
+
+            if (cameraData.frame_size) {
+                imgElement.dataset.frameWidth = cameraData.frame_size.width || '';
+                imgElement.dataset.frameHeight = cameraData.frame_size.height || '';
+            }
+
+            imgElement.src = "data:image/jpeg;base64," + cameraData.frame;
+        }
+
+        function updateCameraFrame(camId, cameraData) {
+            if (!cameraData) return;
+            cameraState[camId] = cameraData;
+
+            const imgElement = document.getElementById(`video-frame-${camId}`);
+            setFrameImage(imgElement, cameraData);
+
+            if (currentActiveStream === camId) {
+                const singleImg = document.getElementById('video-frame-single');
+                setFrameImage(singleImg, cameraData);
+            }
+
+            updateDetections(camId, cameraData.detections || [], cameraData);
+        }
+
+        function renderViolationEvent(cameraData, updatedAt) {
+            if (!cameraData || !cameraData.new_violation) return;
+
+            const eventId = `${updatedAt || Date.now()}-${cameraData.cam_id}-${cameraData.new_violation}`;
+            if (renderedEventIds.has(eventId)) return;
+
+            renderedEventIds.add(eventId);
+            loadViolationHistory();
+        }
+
+        async function fetchDataFromPython() {
+            try {
+                const data = await window.pywebview.api.get_latest_data();
+                if (!data || Object.keys(data).length === 0) return;
+
+                if (data.updated_at && data.updated_at === lastBackendUpdateAt) return;
+                lastBackendUpdateAt = data.updated_at || Date.now();
+
+                if (data.cameras) {
+                    Object.entries(data.cameras).forEach(([camId, cameraData]) => {
+                        updateCameraFrame(camId, cameraData);
+                    });
+
+                    Object.values(data.cameras).forEach(cameraData => {
+                        renderViolationEvent(cameraData, data.updated_at);
+                    });
+                    return;
+                }
+
+                if (data.cam_id) {
+                    updateCameraFrame(data.cam_id, data);
+                }
+
+                renderViolationEvent(data, data.updated_at);
+            } catch (error) {
+                console.error("Ошибка при получении данных от Python:", error);
+            }
+        }
+
+        window.addEventListener('resize', function() {
+            Object.entries(cameraState).forEach(([camId, cameraData]) => {
+                updateDetections(camId, cameraData.detections || [], cameraData);
+            });
+        });
+    </script>
+</body>
+</html>
